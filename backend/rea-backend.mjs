@@ -29,7 +29,10 @@ function json(res, status, value) {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
   res.end(body);
 }
-function operationToCommand(operation) { return operation.replaceAll('_', '-'); }
+const cliCommandByOperation = {
+  binary_overview: 'analyze',
+};
+function operationToCommand(operation) { return cliCommandByOperation[operation] ?? operation.replaceAll('_', '-'); }
 function readJson(req) {
   return new Promise((resolveBody, reject) => {
     let body = '';
@@ -40,7 +43,7 @@ function readJson(req) {
 }
 function cliArgs(operation, target, parameters) {
   const args = [operationToCommand(operation), target];
-  if (['inspect_android_package', 'inspect_android_class', 'inspect_android_method', 'trace_android_references', 'inspect_android_jni_bindings', 'inspect_dart_aot', 'inspect_managed_members', 'inspect_firmware_regions', 'inspect_pcap_capture', 'inspect_native_exports', 'inspect_binary_hardening'].includes(operation)) args.push('--json');
+  if (['inspect_android_package', 'inspect_android_class', 'inspect_android_method', 'trace_android_references', 'inspect_android_jni_bindings', 'inspect_dart_aot', 'inspect_binary_layout', 'inspect_native_exports', 'inspect_binary_hardening', 'inspect_native_load_image', 'inspect_managed_artifact', 'inspect_managed_members', 'inspect_firmware_regions', 'inspect_pcap_capture'].includes(operation)) args.push('--json');
   if (operation === 'search_android_classes' && typeof parameters.query === 'string') args.push(parameters.query);
   if (operation === 'inspect_android_class' && typeof parameters.class_name === 'string') args.push(parameters.class_name);
   if (operation === 'inspect_android_method' && typeof parameters.class_name === 'string' && typeof parameters.method_name === 'string') args.push(parameters.class_name, parameters.method_name);
