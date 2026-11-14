@@ -28,6 +28,17 @@ class EvidenceRecord {
   }
 }
 
+const defaultCapabilityFamilies = <String>[
+  'Android APK',
+  'Flutter AOT',
+  'Native binary',
+  'JavaScript / Electron',
+  '.NET managed code',
+  'Firmware',
+  'Network capture',
+  'Evidence ledger',
+];
+
 class ReaBackend {
   ReaBackend(this.baseUrl);
   final String baseUrl;
@@ -78,7 +89,7 @@ class _ReaHomePageState extends State<ReaHomePage> {
   final _targetCtrl = TextEditingController();
   final _scopeFocus = FocusNode();
   final _targetFocus = FocusNode();
-  List<String> families = [];
+  List<String> families = [...defaultCapabilityFamilies];
   List<EvidenceRecord> records = [];
   String selectedFamily = 'Android APK';
   String? error;
@@ -89,7 +100,17 @@ class _ReaHomePageState extends State<ReaHomePage> {
   @override void dispose() { _backendCtrl.dispose(); _targetCtrl.dispose(); _scopeFocus.dispose(); _targetFocus.dispose(); super.dispose(); }
   Future<void> _loadBackend() async { final p = await SharedPreferences.getInstance(); final v = p.getString('rea_backend'); if (v != null) _backendCtrl.text = v; }
   ReaBackend get _api => ReaBackend(_backendCtrl.text.trim());
-  Future<void> _refresh() async { setState(() { loading = true; error = null; }); try { families = await _api.capabilities(); records = await _api.evidence(); } catch (e) { error = '$e'; } if (mounted) setState(() => loading = false); }
+  Future<void> _refresh() async {
+    setState(() { loading = true; error = null; });
+    try {
+      final discovered = await _api.capabilities();
+      families = discovered.isEmpty ? [...defaultCapabilityFamilies] : discovered;
+      records = await _api.evidence();
+    } catch (e) {
+      error = '$e';
+    }
+    if (mounted) setState(() => loading = false);
+  }
   Future<void> _saveBackend() async { final p = await SharedPreferences.getInstance(); await p.setString('rea_backend', _backendCtrl.text.trim()); await _refresh(); }
   Future<void> _run() async { if (_targetCtrl.text.trim().isEmpty) { setState(() => error = '先输入目标路径或后端可见的目标标识。'); return; } setState(() { loading = true; error = null; }); try { await _api.submit(selectedFamily, _targetCtrl.text.trim()); await _refresh(); } catch (e) { setState(() => error = '$e'); } }
 
