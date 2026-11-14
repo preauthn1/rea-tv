@@ -74,7 +74,7 @@ class ReaHomePage extends StatefulWidget {
 }
 
 class _ReaHomePageState extends State<ReaHomePage> {
-  final _backendCtrl = TextEditingController(text: 'http://10.0.2.2:8787');
+  final _backendCtrl = TextEditingController(text: 'http://192.0.2.2:8787');
   final _targetCtrl = TextEditingController();
   final _scopeFocus = FocusNode();
   final _targetFocus = FocusNode();
