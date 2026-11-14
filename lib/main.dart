@@ -56,7 +56,7 @@ const defaultCapabilityFamilies = <String>[
 ];
 
 const defaultOperationsByFamily = <String, List<String>>{
-  'Android APK': ['inspect_android_package', 'search_android_classes', 'inspect_android_class', 'inspect_android_jni_bindings'],
+  'Android APK': ['inspect_android_package', 'search_android_classes', 'inspect_android_class', 'inspect_android_method', 'trace_android_references', 'inspect_android_jni_bindings'],
   'Flutter AOT': ['identify_flutter_build', 'inspect_dart_aot'],
   'Native binary': ['inspect_binary_layout', 'inspect_native_exports', 'inspect_binary_hardening'],
   'JavaScript / Electron': ['analyze_javascript_application', 'inspect_electron_fuses', 'trace_application_feature'],
@@ -70,6 +70,8 @@ const operationParameterTemplates = <String, String>{
   'inspect_android_package': '{}',
   'search_android_classes': '{"query":""}',
   'inspect_android_class': '{"class_name":"com.example.MainActivity"}',
+  'inspect_android_method': '{"class_name":"com.example.MainActivity","method_name":"onCreate"}',
+  'trace_android_references': '{"class_name":"com.example.MainActivity","method_name":"onCreate"}',
   'inspect_android_jni_bindings': '{"query":{"class_name":"com.example.NativeBridge","abis":["arm64-v8a"]}}',
   'identify_flutter_build': '{}',
   'inspect_dart_aot': '{"abi":"arm64-v8a"}',
@@ -93,6 +95,8 @@ const operationParameterTemplates = <String, String>{
 
 const operationParameterHelp = <String, String>{
   'inspect_android_class': '需要精确 class_name。',
+  'inspect_android_method': '需要 class_name 与 method_name；同名重载时额外提供 overload_index。',
+  'trace_android_references': '需要 class_name，可选 method_name 与 overload_index。',
   'inspect_android_jni_bindings': 'query 可筛选 class_name、method_names、descriptors、abis、library_paths。',
   'inspect_dart_aot': '可选 abi，例如 arm64-v8a。',
   'inspect_managed_members': 'type_names 为完整类型名数组。',
