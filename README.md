@@ -14,6 +14,7 @@ Current client slice:
 - Capability-family discovery
 - Bounded analysis submission
 - Backend capability-family discovery with concrete REA operation mapping
+- JSON parameter editor with operation-specific templates and help text
 - Evidence detail dialog with target, operation, confidence, authority, limitations, location and normalized result
 - Explicit empty, loading and error states
 

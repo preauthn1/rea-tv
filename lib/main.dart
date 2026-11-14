@@ -66,6 +66,40 @@ const defaultOperationsByFamily = <String, List<String>>{
   'Evidence ledger': ['inspect_evidence_bundle', 'inspect_analysis_view'],
 };
 
+const operationParameterTemplates = <String, String>{
+  'inspect_android_package': '{}',
+  'search_android_classes': '{"query":""}',
+  'inspect_android_class': '{"class_name":"com.example.MainActivity"}',
+  'inspect_android_jni_bindings': '{"query":{"class_name":"com.example.NativeBridge","abis":["arm64-v8a"]}}',
+  'identify_flutter_build': '{}',
+  'inspect_dart_aot': '{"abi":"arm64-v8a"}',
+  'inspect_binary_layout': '{}',
+  'inspect_native_exports': '{}',
+  'inspect_binary_hardening': '{}',
+  'analyze_javascript_application': '{}',
+  'inspect_electron_fuses': '{}',
+  'trace_application_feature': '{"feature":"search"}',
+  'inspect_managed_artifact': '{}',
+  'inspect_managed_members': '{"type_names":["Example.Namespace.Type"]}',
+  'project_managed_application_graph': '{}',
+  'inspect_firmware_regions': '{}',
+  'extract_firmware': '{"range":{"offset":0,"length":4096}}',
+  'inspect_pcap_client': '{}',
+  'inspect_pcap_capture': '{}',
+  'inspect_web_network_capture': '{}',
+  'inspect_evidence_bundle': '{}',
+  'inspect_analysis_view': '{"view":{"kind":"dart-aot","collection":"package_uris","offset":0,"limit":64}}',
+};
+
+const operationParameterHelp = <String, String>{
+  'inspect_android_class': '需要精确 class_name。',
+  'inspect_android_jni_bindings': 'query 可筛选 class_name、method_names、descriptors、abis、library_paths。',
+  'inspect_dart_aot': '可选 abi，例如 arm64-v8a。',
+  'inspect_managed_members': 'type_names 为完整类型名数组。',
+  'extract_firmware': 'range 需要 offset 与 length；后端还应验证输出目录与预算。',
+  'inspect_analysis_view': 'view 需要 kind、collection、offset、limit。',
+};
+
 class ReaBackend {
   ReaBackend(this.baseUrl);
   final String baseUrl;
@@ -143,7 +177,7 @@ class _ReaHomePageState extends State<ReaHomePage> {
       final discovered = await _api.capabilities();
       families = discovered.isEmpty ? [...defaultCapabilityFamilies] : discovered;
       final ops = defaultOperationsByFamily[families.contains(selectedFamily) ? selectedFamily : families.first] ?? const <String>[];
-      if (ops.isNotEmpty && !ops.contains(selectedOperation)) selectedOperation = ops.first;
+      if (ops.isNotEmpty && !ops.contains(selectedOperation)) { selectedOperation = ops.first; _parametersCtrl.text = operationParameterTemplates[selectedOperation] ?? '{}'; }
       records = await _api.evidence();
     } catch (e) {
       error = '$e';
@@ -167,6 +201,13 @@ class _ReaHomePageState extends State<ReaHomePage> {
         if (mounted) setState(() => error = '$e');
         _jobPoller?.cancel();
       }
+    });
+  }
+  void _selectOperation(String? value) {
+    final operation = value ?? selectedOperation;
+    setState(() {
+      selectedOperation = operation;
+      _parametersCtrl.text = operationParameterTemplates[operation] ?? '{}';
     });
   }
   Map<String, dynamic> _parameters() {
@@ -219,7 +260,7 @@ class _ReaHomePageState extends State<ReaHomePage> {
                 onChanged: (v) {
                   final family = v ?? selectedFamily;
                   final ops = defaultOperationsByFamily[family] ?? const <String>[];
-                  setState(() { selectedFamily = family; if (ops.isNotEmpty) selectedOperation = ops.first; });
+                  setState(() { selectedFamily = family; if (ops.isNotEmpty) { selectedOperation = ops.first; _parametersCtrl.text = operationParameterTemplates[selectedOperation] ?? '{}'; } });
                 },
                 decoration: const InputDecoration(labelText: '能力族', border: OutlineInputBorder()),
               ),
@@ -228,8 +269,8 @@ class _ReaHomePageState extends State<ReaHomePage> {
                 isExpanded: true,
                 initialValue: selectedOperation,
                 items: (defaultOperationsByFamily[selectedFamily] ?? const <String>[]).map((x) => DropdownMenuItem(value: x, child: Text(x, overflow: TextOverflow.ellipsis))).toList(),
-                onChanged: (v) => setState(() => selectedOperation = v ?? selectedOperation),
-                decoration: const InputDecoration(labelText: '具体工具', border: OutlineInputBorder()),
+                onChanged: _selectOperation,
+                decoration: InputDecoration(labelText: '具体工具', helperText: operationParameterHelp[selectedOperation], border: const OutlineInputBorder()),
               ),
               const SizedBox(height: 14),
               TextField(
