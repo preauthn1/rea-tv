@@ -77,4 +77,4 @@ The existing REA source already has canonical tool contracts and registrations. 
 - `registerAnalysisViewTool.ts`
 - `src/domain/evidence.ts`
 
-The backend should use the existing evidence schema and return `normalized_result`, not an LLM-generated summary without source evidence.
+The backend should return the full operation list for each family. The TV client uses that list when present and falls back to a bundled catalog when discovery is unavailable. The backend should use the existing evidence schema and return `normalized_result`, not an LLM-generated summary without source evidence.

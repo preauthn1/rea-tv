@@ -104,11 +104,19 @@ class ReaBackend {
   ReaBackend(this.baseUrl);
   final String baseUrl;
   Uri _uri(String path, [Map<String, String>? query]) => Uri.parse('$baseUrl/${path.replaceFirst(RegExp(r'^/+'), '')}').replace(queryParameters: query);
-  Future<List<String>> capabilities() async {
+  Future<Map<String, List<String>>> capabilities() async {
     final r = await http.get(_uri('/api/capabilities'));
     _check(r);
     final data = jsonDecode(r.body);
-    return [for (final x in (data['families'] as List? ?? const [])) '${x['name'] ?? x}'];
+    final result = <String, List<String>>{};
+    for (final item in (data['families'] as List? ?? const [])) {
+      if (item is Map) {
+        final name = '${item['name'] ?? item['id'] ?? 'Unknown'}';
+        final ops = [for (final op in (item['operations'] as List? ?? const [])) '$op'];
+        result[name] = ops;
+      }
+    }
+    return result;
   }
   Future<List<EvidenceRecord>> evidence() async {
     final r = await http.get(_uri('/api/evidence', {'limit': '50'}));
@@ -158,6 +166,7 @@ class _ReaHomePageState extends State<ReaHomePage> {
   final _scopeFocus = FocusNode();
   final _targetFocus = FocusNode();
   List<String> families = [...defaultCapabilityFamilies];
+  Map<String, List<String>> discoveredOperations = {};
   List<EvidenceRecord> records = [];
   AnalysisJob? activeJob;
   Timer? _jobPoller;
@@ -175,8 +184,9 @@ class _ReaHomePageState extends State<ReaHomePage> {
     setState(() { loading = true; error = null; });
     try {
       final discovered = await _api.capabilities();
-      families = discovered.isEmpty ? [...defaultCapabilityFamilies] : discovered;
-      final ops = defaultOperationsByFamily[families.contains(selectedFamily) ? selectedFamily : families.first] ?? const <String>[];
+      discoveredOperations = discovered;
+      families = discovered.isEmpty ? [...defaultCapabilityFamilies] : discovered.keys.toList();
+      final ops = discoveredOperations[selectedFamily] ?? defaultOperationsByFamily[selectedFamily] ?? const <String>[];
       if (ops.isNotEmpty && !ops.contains(selectedOperation)) { selectedOperation = ops.first; _parametersCtrl.text = operationParameterTemplates[selectedOperation] ?? '{}'; }
       records = await _api.evidence();
     } catch (e) {
@@ -259,7 +269,7 @@ class _ReaHomePageState extends State<ReaHomePage> {
                 items: families.map((x) => DropdownMenuItem(value: x, child: Text(x, overflow: TextOverflow.ellipsis))).toList(),
                 onChanged: (v) {
                   final family = v ?? selectedFamily;
-                  final ops = defaultOperationsByFamily[family] ?? const <String>[];
+                  final ops = discoveredOperations[family] ?? defaultOperationsByFamily[family] ?? const <String>[];
                   setState(() { selectedFamily = family; if (ops.isNotEmpty) { selectedOperation = ops.first; _parametersCtrl.text = operationParameterTemplates[selectedOperation] ?? '{}'; } });
                 },
                 decoration: const InputDecoration(labelText: '能力族', border: OutlineInputBorder()),
@@ -268,7 +278,7 @@ class _ReaHomePageState extends State<ReaHomePage> {
               DropdownButtonFormField<String>(
                 isExpanded: true,
                 initialValue: selectedOperation,
-                items: (defaultOperationsByFamily[selectedFamily] ?? const <String>[]).map((x) => DropdownMenuItem(value: x, child: Text(x, overflow: TextOverflow.ellipsis))).toList(),
+                items: ((discoveredOperations[selectedFamily] ?? defaultOperationsByFamily[selectedFamily] ?? const <String>[])).map((x) => DropdownMenuItem(value: x, child: Text(x, overflow: TextOverflow.ellipsis))).toList(),
                 onChanged: _selectOperation,
                 decoration: InputDecoration(labelText: '具体工具', helperText: operationParameterHelp[selectedOperation], border: const OutlineInputBorder()),
               ),
