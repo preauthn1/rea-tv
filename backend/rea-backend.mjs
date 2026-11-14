@@ -16,7 +16,7 @@ const evidence = [];
 const catalog = [
   { id: 'android-apk', name: 'Android APK', operations: ['inspect_android_package', 'search_android_classes', 'inspect_android_class', 'inspect_android_method', 'trace_android_references', 'inspect_android_jni_bindings'] },
   { id: 'flutter', name: 'Flutter AOT', operations: ['identify_flutter_build', 'inspect_dart_aot'] },
-  { id: 'native', name: 'Native binary', operations: ['inspect_binary_layout', 'inspect_native_exports', 'inspect_binary_hardening'] },
+  { id: 'native', name: 'Native binary', operations: ['binary_overview', 'inspect_binary_layout', 'inspect_native_exports', 'inspect_binary_hardening', 'search_bytes', 'inspect_native_load_image'] },
   { id: 'javascript', name: 'JavaScript / Electron', operations: ['analyze_javascript_application', 'inspect_electron_fuses', 'trace_application_feature'] },
   { id: 'managed', name: '.NET managed code', operations: ['inspect_managed_artifact', 'inspect_managed_members', 'project_managed_application_graph'] },
   { id: 'firmware', name: 'Firmware', operations: ['inspect_firmware_regions', 'extract_firmware'] },
@@ -39,12 +39,14 @@ function readJson(req) {
   });
 }
 function cliArgs(operation, target, parameters) {
-  const args = [operationToCommand(operation), target, '--json'];
+  const args = [operationToCommand(operation), target];
+  if (['inspect_android_package', 'inspect_android_class', 'inspect_android_method', 'trace_android_references', 'inspect_android_jni_bindings', 'inspect_dart_aot', 'inspect_managed_members', 'inspect_firmware_regions', 'inspect_pcap_capture', 'inspect_native_exports', 'inspect_binary_hardening'].includes(operation)) args.push('--json');
   if (operation === 'search_android_classes' && typeof parameters.query === 'string') args.push(parameters.query);
   if (operation === 'inspect_android_class' && typeof parameters.class_name === 'string') args.push(parameters.class_name);
   if (operation === 'inspect_android_method' && typeof parameters.class_name === 'string' && typeof parameters.method_name === 'string') args.push(parameters.class_name, parameters.method_name);
   if (operation === 'trace_android_references' && typeof parameters.class_name === 'string') args.push(parameters.class_name);
   if (operation === 'inspect_dart_aot' && typeof parameters.abi === 'string') args.push('--abi', parameters.abi);
+  if (operation === 'inspect_managed_members' && Array.isArray(parameters.type_names)) for (const type of parameters.type_names) args.push('--type', `${type}`);
   return args;
 }
 async function runJob(job) {
