@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -5,6 +6,19 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() => runApp(const ReaTvApp());
+
+class AnalysisJob {
+  const AnalysisJob({required this.id, required this.operation, required this.target, required this.status, this.message});
+  final String id, operation, target, status;
+  final String? message;
+  factory AnalysisJob.fromJson(Map<String, dynamic> j) => AnalysisJob(
+        id: '${j['analysis_id'] ?? j['id'] ?? 'unknown'}',
+        operation: '${j['operation'] ?? ''}',
+        target: '${j['target'] ?? ''}',
+        status: '${j['status'] ?? 'unknown'}',
+        message: j['message'] as String?,
+      );
+}
 
 class EvidenceRecord {
   const EvidenceRecord({required this.id, required this.operation, required this.target, required this.summary, required this.confidence, required this.authority, required this.limitations, this.location, this.rawResult});
@@ -68,9 +82,15 @@ class ReaBackend {
     final data = jsonDecode(r.body) as List;
     return data.map((x) => EvidenceRecord.fromJson(x as Map<String, dynamic>)).toList();
   }
-  Future<void> submit(String operation, String target) async {
+  Future<AnalysisJob> submit(String operation, String target) async {
     final r = await http.post(_uri('/api/analyses'), headers: {'content-type': 'application/json'}, body: jsonEncode({'operation': operation, 'target': target}));
     _check(r);
+    return AnalysisJob.fromJson(jsonDecode(r.body) as Map<String, dynamic>);
+  }
+  Future<AnalysisJob> job(String id) async {
+    final r = await http.get(_uri('/api/analyses/$id'));
+    _check(r);
+    return AnalysisJob.fromJson(jsonDecode(r.body) as Map<String, dynamic>);
   }
   static void _check(http.Response r) { if (r.statusCode < 200 || r.statusCode >= 300) throw Exception('Backend HTTP ${r.statusCode}: ${r.body}'); }
 }
@@ -104,6 +124,8 @@ class _ReaHomePageState extends State<ReaHomePage> {
   final _targetFocus = FocusNode();
   List<String> families = [...defaultCapabilityFamilies];
   List<EvidenceRecord> records = [];
+  AnalysisJob? activeJob;
+  Timer? _jobPoller;
   String selectedFamily = 'Android APK';
   String selectedOperation = 'inspect_android_package';
   String? error;
@@ -111,7 +133,7 @@ class _ReaHomePageState extends State<ReaHomePage> {
   int tab = 0;
 
   @override void initState() { super.initState(); _loadBackend(); }
-  @override void dispose() { _backendCtrl.dispose(); _targetCtrl.dispose(); _scopeFocus.dispose(); _targetFocus.dispose(); super.dispose(); }
+  @override void dispose() { _jobPoller?.cancel(); _backendCtrl.dispose(); _targetCtrl.dispose(); _scopeFocus.dispose(); _targetFocus.dispose(); super.dispose(); }
   Future<void> _loadBackend() async { final p = await SharedPreferences.getInstance(); final v = p.getString('rea_backend'); if (v != null) _backendCtrl.text = v; }
   ReaBackend get _api => ReaBackend(_backendCtrl.text.trim());
   Future<void> _refresh() async {
@@ -127,8 +149,27 @@ class _ReaHomePageState extends State<ReaHomePage> {
     }
     if (mounted) setState(() => loading = false);
   }
+  void _watchJob(AnalysisJob job) {
+    _jobPoller?.cancel();
+    activeJob = job;
+    if (job.status == 'completed' || job.status == 'failed') return;
+    _jobPoller = Timer.periodic(const Duration(seconds: 2), (_) async {
+      try {
+        final latest = await _api.job(job.id);
+        if (!mounted) return;
+        setState(() => activeJob = latest);
+        if (latest.status == 'completed' || latest.status == 'failed') {
+          _jobPoller?.cancel();
+          await _refresh();
+        }
+      } catch (e) {
+        if (mounted) setState(() => error = '$e');
+        _jobPoller?.cancel();
+      }
+    });
+  }
   Future<void> _saveBackend() async { final p = await SharedPreferences.getInstance(); await p.setString('rea_backend', _backendCtrl.text.trim()); await _refresh(); }
-  Future<void> _run() async { if (_targetCtrl.text.trim().isEmpty) { setState(() => error = '先输入目标路径或后端可见的目标标识。'); return; } setState(() { loading = true; error = null; }); try { await _api.submit(selectedOperation, _targetCtrl.text.trim()); await _refresh(); } catch (e) { setState(() => error = '$e'); } }
+  Future<void> _run() async { if (_targetCtrl.text.trim().isEmpty) { setState(() => error = '先输入目标路径或后端可见的目标标识。'); return; } setState(() { loading = true; error = null; }); try { final job = await _api.submit(selectedOperation, _targetCtrl.text.trim()); _watchJob(job); await _refresh(); } catch (e) { setState(() => error = '$e'); } finally { if (mounted) setState(() => loading = false); } }
 
   @override
   Widget build(BuildContext context) => FocusTraversalGroup(child: Shortcuts(shortcuts: const {SingleActivator(LogicalKeyboardKey.select): ActivateIntent()}, child: Actions(actions: {ActivateIntent: CallbackAction<ActivateIntent>(onInvoke: (_) { _refresh(); return null; })}, child: Scaffold(body: SafeArea(child: Row(children: [_nav(), Expanded(child: _page())]))))));
@@ -195,7 +236,7 @@ class _ReaHomePageState extends State<ReaHomePage> {
           ),
         ),
       );
-  Widget _statusPanel() => Card(child: Padding(padding: const EdgeInsets.all(22), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('状态', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)), const SizedBox(height: 18), _Metric(label: '后端', value: _backendCtrl.text.isEmpty ? '未配置' : '已配置', color: const Color(0xff8dffe0)), _Metric(label: '能力族', value: '${families.length} 个'), _Metric(label: '证据记录', value: '${records.length} 条'), if (loading) const Padding(padding: EdgeInsets.only(top: 12), child: LinearProgressIndicator()), if (error != null) Padding(padding: const EdgeInsets.only(top: 14), child: Text(error!, style: const TextStyle(color: Colors.orangeAccent))) ])));
+  Widget _statusPanel() => Card(child: Padding(padding: const EdgeInsets.all(22), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('状态', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)), const SizedBox(height: 18), _Metric(label: '后端', value: _backendCtrl.text.isEmpty ? '未配置' : '已配置', color: const Color(0xff8dffe0)), _Metric(label: '能力族', value: '${families.length} 个'), _Metric(label: '证据记录', value: '${records.length} 条'), if (activeJob != null) _Metric(label: '当前任务', value: '${activeJob!.status} · ${activeJob!.operation}'), if (loading || activeJob?.status == 'queued' || activeJob?.status == 'running') const Padding(padding: EdgeInsets.only(top: 12), child: LinearProgressIndicator()), if (activeJob?.message != null) Padding(padding: const EdgeInsets.only(top: 10), child: Text(activeJob!.message!, style: const TextStyle(color: Color(0xff9ba8b7)))), if (error != null) Padding(padding: const EdgeInsets.only(top: 14), child: Text(error!, style: const TextStyle(color: Colors.orangeAccent))) ])));
   Future<void> _openEvidence(EvidenceRecord record) async {
     await showDialog<void>(
       context: context,

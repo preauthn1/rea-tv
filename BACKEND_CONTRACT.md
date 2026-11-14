@@ -34,6 +34,22 @@ Response may be `202 Accepted` with an operation ID:
 
 The backend should execute the bounded REA operation, preserve the exact target digest, and record Evidence.
 
+## GET /api/analyses/:id
+
+The TV client polls this endpoint every two seconds while a submitted operation is `queued` or `running`:
+
+```json
+{
+  "analysis_id": "an-...",
+  "operation": "inspect_android_package",
+  "target": "/targets/sample.apk",
+  "status": "running",
+  "message": "JADX is indexing classes"
+}
+```
+
+Terminal states are `completed` and `failed`. Once `completed`, the client refreshes `/api/evidence`.
+
 ## GET /api/evidence?limit=50
 
 Response is a JSON array of REA Evidence records. The client consumes:
