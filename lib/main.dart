@@ -129,17 +129,17 @@ class _ReaHomePageState extends State<ReaHomePage> {
               const Text('开始一次有界分析', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
               const SizedBox(height: 18),
               DropdownButtonFormField<String>(
+                isExpanded: true,
                 initialValue: selectedFamily,
-                items: [selectedFamily, ...families.where((x) => x != selectedFamily)].map((x) => DropdownMenuItem(value: x, child: Text(x))).toList(),
+                items: [selectedFamily, ...families.where((x) => x != selectedFamily)].map((x) => DropdownMenuItem(value: x, child: Text(x, overflow: TextOverflow.ellipsis))).toList(),
                 onChanged: (v) => setState(() => selectedFamily = v ?? selectedFamily),
                 decoration: const InputDecoration(labelText: '能力族', border: OutlineInputBorder()),
               ),
               const SizedBox(height: 14),
               TextField(focusNode: _targetFocus, controller: _targetCtrl, decoration: const InputDecoration(labelText: '目标路径或目标标识', hintText: '/targets/sample.apk', border: OutlineInputBorder())),
               const SizedBox(height: 18),
-              Row(children: [
+              Wrap(spacing: 14, runSpacing: 10, children: [
                 FilledButton.icon(onPressed: loading ? null : _run, icon: const Icon(Icons.play_arrow), label: const Text('提交分析')),
-                const SizedBox(width: 14),
                 OutlinedButton.icon(onPressed: loading ? null : _refresh, icon: const Icon(Icons.refresh), label: const Text('刷新证据')),
               ]),
             ],
@@ -173,7 +173,27 @@ class _ReaHomePageState extends State<ReaHomePage> {
       );
 }
 
-class _NavButton extends StatelessWidget { const _NavButton({required this.icon, required this.label, required this.selected, required this.onTap}); final IconData icon; final String label; final bool selected; final VoidCallback onTap; @override Widget build(BuildContext context) => Padding(padding: const EdgeInsets.only(bottom: 8), child: ListTile(selected: selected, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), leading: Icon(icon, color: selected ? const Color(0xff8dffe0) : null), title: Text(label), onTap: onTap)); }
+class _NavButton extends StatelessWidget {
+  const _NavButton({required this.icon, required this.label, required this.selected, required this.onTap});
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Material(
+          color: Colors.transparent,
+          child: ListTile(
+            selected: selected,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            leading: Icon(icon, color: selected ? const Color(0xff8dffe0) : null),
+            title: Text(label),
+            onTap: onTap,
+          ),
+        ),
+      );
+}
 class _Metric extends StatelessWidget { const _Metric({required this.label, required this.value, this.color}); final String label, value; final Color? color; @override Widget build(BuildContext context) => Padding(padding: const EdgeInsets.only(bottom: 14), child: Row(children: [Expanded(child: Text(label, style: const TextStyle(color: Color(0xff8d99a8)))), Text(value, style: TextStyle(fontWeight: FontWeight.w700, color: color))])); }
 class _EvidenceTile extends StatelessWidget {
   const _EvidenceTile({required this.record});

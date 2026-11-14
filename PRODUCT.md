@@ -42,7 +42,7 @@ Product name: REA TV. Preserve the REA evidence-led vocabulary: target, operatio
 
 ## Evidence on Hand
 
-- Source repository: `/root/work/rea`
+- Source repository: upstream `morluto/rea` checkout pinned to `a6f98e733eb0efd9b62b740fb9d847c098925e99`
 - REA current checkout: `a6f98e733eb0efd9b62b740fb9d847c098925e99`
 - REA exposes Android APK, Flutter AOT, native binary, web, managed-code, firmware, capture, and evidence workflows through CLI/MCP contracts.
 - No Flutter SDK is installed on the current host; source-level and bounded static checks are available, while APK compilation remains unverified until a Flutter toolchain is supplied.

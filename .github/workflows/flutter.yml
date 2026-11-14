@@ -1,0 +1,49 @@
+name: Flutter Android TV CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: rea-tv-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  analyze-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze --no-fatal-infos
+      - run: flutter test --no-pub
+
+  android-apk:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    needs: analyze-test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build apk --release --split-per-abi
+      - name: Write provenance
+        run: |
+          mkdir -p build/provenance
+          printf 'commit=%s\nrun=%s\nworkflow=%s\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_WORKFLOW" > build/provenance/BUILD_INFO.txt
+          sha256sum build/app/outputs/flutter-apk/*.apk > build/provenance/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rea-tv-android-${{ github.sha }}
+          path: |
+            build/app/outputs/flutter-apk/*.apk
+            build/provenance/BUILD_INFO.txt
+            build/provenance/SHA256SUMS
