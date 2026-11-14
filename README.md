@@ -56,3 +56,17 @@ MIHOMO_SECRET='[secret]'
 The backend exposes authenticated proxy-management endpoints under `/api/mihomo/*`. The Flutter UI can view version/config status, list proxy groups and nodes, and switch Selector groups. The included `mihomo/application-only.yaml` disables all inbound proxy ports and TUN; adapt it only if the application later needs a narrowly scoped internal outbound transport.
 
 This is intentionally not a VPN or global-proxy integration. It is a controlled, app-owned mihomo node engine boundary.
+
+## Android-private mihomo v1.19.34 lifecycle
+
+The Android TV app has an ARM64-only native bridge that downloads only the official, pinned release asset `mihomo-android-arm64-v8-v1.19.34.gz` from MetaCubeX's GitHub release URL. Before extraction it checks the pinned SHA-256:
+
+```text
+48a71fc6a68e2909587176e0ab7185d8f2fac298fa96ccdacf30ea86ab2359b5
+```
+
+The bridge extracts into Android internal app storage (`filesDir/mihomo-v1.19.34/bin/mihomo`), marks it owner-executable, invokes `mihomo -v`, and accepts only output containing `v1.19.34`. It never writes executable content to shared/external storage.
+
+Candidate YAML is written to a private candidate path and first passed through `mihomo -t -f`. On successful activation the previous active config is copied to a private rollback path before atomic candidate promotion; the promoted file is checked again and restored from rollback if that second validation fails.
+
+The application-only policy rejects nonzero `port`, `socks-port`, `mixed-port`, `redir-port`, `tproxy-port`; nonempty `listeners`; and `tun.enable: true`. This ensures that this lifecycle does not create a device VPN, a global proxy, or proxy listeners. Binary execution and final Android lifecycle behavior still need an ARM64 Android TV device or emulator acceptance run; the development host cannot execute the Android ELF.

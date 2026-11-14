@@ -6,7 +6,13 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-void main() => runApp(const ReaTvApp());
+const _mihomoChannel = MethodChannel('io.rea.rea_tv/mihomo');
+const mihomoVersion = 'v1.19.34';
+const mihomoAssetUrl = 'https://github.com/MetaCubeX/mihomo/releases/download/v1.19.34/mihomo-android-arm64-v8-v1.19.34.gz';
+const mihomoAssetSha256 = '48a71fc6a68e2909587176e0ab7185d8f2fac298fa96ccdacf30ea86ab2359b5';
+
+Future<Map<String, dynamic>> _mihomoNative(String method, [Map<String, Object?> args = const {}]) async => Map<String, dynamic>.from((await _mihomoChannel.invokeMapMethod<String, dynamic>(method, args)) ?? const {});
+
 
 class MihomoProxy {
   const MihomoProxy({required this.name, required this.type, this.alive, this.delay, this.all = const [], this.now});
@@ -174,6 +180,8 @@ class ReaBackend {
   static void _check(http.Response r) { if (r.statusCode < 200 || r.statusCode >= 300) throw Exception('Backend HTTP ${r.statusCode}: ${r.body}'); }
 }
 
+void main() => runApp(const ReaTvApp());
+
 class ReaTvApp extends StatelessWidget {
   const ReaTvApp({super.key});
   @override
@@ -208,6 +216,9 @@ class _ReaHomePageState extends State<ReaHomePage> {
   Map<String, List<String>> discoveredOperations = {};
   List<MihomoProxy> mihomoProxies = [];
   Map<String, dynamic>? mihomoStatus;
+  Map<String, dynamic>? mihomoInstall;
+  final _mihomoYamlCtrl = TextEditingController();
+  String? mihomoMessage;
   List<EvidenceRecord> records = [];
   AnalysisJob? activeJob;
   Timer? _jobPoller;
@@ -218,10 +229,12 @@ class _ReaHomePageState extends State<ReaHomePage> {
   int tab = 0;
 
   @override void initState() { super.initState(); _loadBackend(); }
-  @override void dispose() { _jobPoller?.cancel(); _backendCtrl.dispose(); _tokenCtrl.dispose(); _targetCtrl.dispose(); _parametersCtrl.dispose(); _scopeFocus.dispose(); _targetFocus.dispose(); super.dispose(); }
+  @override void dispose() { _jobPoller?.cancel(); _backendCtrl.dispose(); _tokenCtrl.dispose(); _targetCtrl.dispose(); _parametersCtrl.dispose(); _mihomoYamlCtrl.dispose(); _scopeFocus.dispose(); _targetFocus.dispose(); super.dispose(); }
   Future<void> _loadBackend() async { final p = await SharedPreferences.getInstance(); final v = p.getString('rea_backend'); final token = await _secureStorage.read(key: 'rea_backend_token'); if (v != null) _backendCtrl.text = v; if (token != null) _tokenCtrl.text = token; }
   ReaBackend get _api => ReaBackend(_backendCtrl.text.trim(), token: _tokenCtrl.text);
   Future<void> _refreshMihomo() async { try { final status = await _api.mihomoStatus(); final proxies = await _api.mihomoProxies(); if (mounted) setState(() { mihomoStatus = status; mihomoProxies = proxies; }); } catch (e) { if (mounted) setState(() => error = '$e'); } }
+  Future<void> _installMihomo() async { try { setState(() => mihomoMessage = '正在下载并验证官方 ARM64 二进制…'); final result = await _mihomoNative('downloadAndInstall', {'url': mihomoAssetUrl, 'sha256': mihomoAssetSha256}); if (mounted) setState(() { mihomoInstall = result; mihomoMessage = result['ok'] == true ? 'mihomo $mihomoVersion 已安装并通过 SHA-256 与版本校验。' : '安装未完成'; }); } catch (e) { if (mounted) setState(() => mihomoMessage = '安装失败：$e'); } }
+  Future<void> _validateMihomoConfig({required bool activate}) async { try { setState(() => mihomoMessage = activate ? '正在校验并激活候选配置…' : '正在校验候选配置…'); final result = await _mihomoNative(activate ? 'activate' : 'validate', {'yaml': _mihomoYamlCtrl.text}); if (mounted) setState(() => mihomoMessage = '${result['ok'] == true ? '成功' : '失败'}${result['rolledBack'] == true ? '；已回滚至上一份配置' : ''}\n${result['output'] ?? ''}'); } catch (e) { if (mounted) setState(() => mihomoMessage = '配置操作失败：$e'); } }
   Future<void> _chooseMihomoNode(MihomoProxy group) async {
     final selected = await showDialog<String>(context: context, builder: (context) => AlertDialog(title: Text('切换 ${group.name}'), content: SizedBox(width: 680, child: ListView(children: [for (final node in group.all) ListTile(autofocus: node == group.now, title: Text(node), trailing: node == group.now ? const Icon(Icons.check, color: Color(0xff8dffe0)) : null, onTap: () => Navigator.pop(context, node))])), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消'))]));
     if (selected == null || selected == group.now) return;
@@ -380,10 +393,18 @@ class _ReaHomePageState extends State<ReaHomePage> {
         padding: const EdgeInsets.all(36),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [Expanded(child: Text('mihomo 节点管理', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800))), IconButton(onPressed: _refreshMihomo, icon: const Icon(Icons.refresh))]),
+          const SizedBox(height: 10),
+          Wrap(spacing: 12, children: [FilledButton.icon(onPressed: _installMihomo, icon: const Icon(Icons.download), label: const Text('安装官方 v1.19.34')), OutlinedButton(onPressed: () => _validateMihomoConfig(activate: false), child: const Text('校验候选配置')), FilledButton(onPressed: () => _validateMihomoConfig(activate: true), child: const Text('激活并保留回滚点'))]),
+          const SizedBox(height: 10),
+          Text('仅应用内：TUN、VPN、系统代理和代理监听端口会被配置策略拒绝。', style: const TextStyle(color: Color(0xff9ba8b7))),
+          if (mihomoInstall != null) Text('二进制：${mihomoInstall!['version'] ?? '已安装'}', style: const TextStyle(color: Color(0xff8dffe0))),
+          if (mihomoMessage != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(mihomoMessage!, maxLines: 4, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xffffd479)))),
+          const SizedBox(height: 10),
+          SizedBox(height: 140, child: TextField(controller: _mihomoYamlCtrl, expands: true, maxLines: null, minLines: null, decoration: const InputDecoration(labelText: '候选 mihomo YAML', hintText: '仅应用内配置；激活前会 mihomo -t 校验', border: OutlineInputBorder()))),
+          const SizedBox(height: 14),
           Text(mihomoStatus == null ? '未连接 Controller' : 'Controller 已连接', style: TextStyle(color: mihomoStatus == null ? Colors.orangeAccent : const Color(0xff8dffe0))),
-          const SizedBox(height: 20),
           if (mihomoStatus != null) Text('版本：${(mihomoStatus!['version'] as Map?)?['version'] ?? 'unknown'} · 模式：${(mihomoStatus!['configs'] as Map?)?['mode'] ?? 'unknown'}'),
-          const SizedBox(height: 18),
+          const SizedBox(height: 12),
           Expanded(child: mihomoProxies.isEmpty ? const Center(child: Text('没有节点数据，检查 mihomo Controller 地址和 Token。')) : ListView.separated(itemCount: mihomoProxies.length, separatorBuilder: (_, __) => const SizedBox(height: 8), itemBuilder: (_, i) { final p = mihomoProxies[i]; return Card(child: ListTile(leading: Icon(p.alive == false ? Icons.cloud_off : Icons.cloud_done, color: p.alive == false ? Colors.orangeAccent : const Color(0xff8dffe0)), title: Text(p.name), subtitle: Text('${p.type}${p.now == null ? '' : ' · 当前：${p.now}'}${p.delay == null ? '' : ' · ${p.delay} ms'}'), trailing: p.selectable ? FilledButton(onPressed: () => _chooseMihomoNode(p), child: const Text('切换')) : null)); })),
         ]),
       );
