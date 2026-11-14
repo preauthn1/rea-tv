@@ -22,7 +22,8 @@ Request:
 ```json
 {
   "operation": "inspect_android_package",
-  "target": "/targets/sample.apk"
+  "target": "/targets/sample.apk",
+  "parameters": {}
 }
 ```
 

@@ -82,8 +82,8 @@ class ReaBackend {
     final data = jsonDecode(r.body) as List;
     return data.map((x) => EvidenceRecord.fromJson(x as Map<String, dynamic>)).toList();
   }
-  Future<AnalysisJob> submit(String operation, String target) async {
-    final r = await http.post(_uri('/api/analyses'), headers: {'content-type': 'application/json'}, body: jsonEncode({'operation': operation, 'target': target}));
+  Future<AnalysisJob> submit(String operation, String target, Map<String, dynamic> parameters) async {
+    final r = await http.post(_uri('/api/analyses'), headers: {'content-type': 'application/json'}, body: jsonEncode({'operation': operation, 'target': target, 'parameters': parameters}));
     _check(r);
     return AnalysisJob.fromJson(jsonDecode(r.body) as Map<String, dynamic>);
   }
@@ -120,6 +120,7 @@ class ReaHomePage extends StatefulWidget {
 class _ReaHomePageState extends State<ReaHomePage> {
   final _backendCtrl = TextEditingController(text: 'http://192.0.2.2:8787');
   final _targetCtrl = TextEditingController();
+  final _parametersCtrl = TextEditingController(text: '{}');
   final _scopeFocus = FocusNode();
   final _targetFocus = FocusNode();
   List<String> families = [...defaultCapabilityFamilies];
@@ -133,7 +134,7 @@ class _ReaHomePageState extends State<ReaHomePage> {
   int tab = 0;
 
   @override void initState() { super.initState(); _loadBackend(); }
-  @override void dispose() { _jobPoller?.cancel(); _backendCtrl.dispose(); _targetCtrl.dispose(); _scopeFocus.dispose(); _targetFocus.dispose(); super.dispose(); }
+  @override void dispose() { _jobPoller?.cancel(); _backendCtrl.dispose(); _targetCtrl.dispose(); _parametersCtrl.dispose(); _scopeFocus.dispose(); _targetFocus.dispose(); super.dispose(); }
   Future<void> _loadBackend() async { final p = await SharedPreferences.getInstance(); final v = p.getString('rea_backend'); if (v != null) _backendCtrl.text = v; }
   ReaBackend get _api => ReaBackend(_backendCtrl.text.trim());
   Future<void> _refresh() async {
@@ -168,8 +169,13 @@ class _ReaHomePageState extends State<ReaHomePage> {
       }
     });
   }
+  Map<String, dynamic> _parameters() {
+    final decoded = jsonDecode(_parametersCtrl.text.trim().isEmpty ? '{}' : _parametersCtrl.text.trim());
+    if (decoded is! Map<String, dynamic>) throw const FormatException('参数必须是 JSON 对象');
+    return decoded;
+  }
   Future<void> _saveBackend() async { final p = await SharedPreferences.getInstance(); await p.setString('rea_backend', _backendCtrl.text.trim()); await _refresh(); }
-  Future<void> _run() async { if (_targetCtrl.text.trim().isEmpty) { setState(() => error = '先输入目标路径或后端可见的目标标识。'); return; } setState(() { loading = true; error = null; }); try { final job = await _api.submit(selectedOperation, _targetCtrl.text.trim()); _watchJob(job); await _refresh(); } catch (e) { setState(() => error = '$e'); } finally { if (mounted) setState(() => loading = false); } }
+  Future<void> _run() async { if (_targetCtrl.text.trim().isEmpty) { setState(() => error = '先输入目标路径或后端可见的目标标识。'); return; } setState(() { loading = true; error = null; }); try { final job = await _api.submit(selectedOperation, _targetCtrl.text.trim(), _parameters()); _watchJob(job); await _refresh(); } catch (e) { setState(() => error = '$e'); } finally { if (mounted) setState(() => loading = false); } }
 
   @override
   Widget build(BuildContext context) => FocusTraversalGroup(child: Shortcuts(shortcuts: const {SingleActivator(LogicalKeyboardKey.select): ActivateIntent()}, child: Actions(actions: {ActivateIntent: CallbackAction<ActivateIntent>(onInvoke: (_) { _refresh(); return null; })}, child: Scaffold(body: SafeArea(child: Row(children: [_nav(), Expanded(child: _page())]))))));
@@ -224,6 +230,16 @@ class _ReaHomePageState extends State<ReaHomePage> {
                 items: (defaultOperationsByFamily[selectedFamily] ?? const <String>[]).map((x) => DropdownMenuItem(value: x, child: Text(x, overflow: TextOverflow.ellipsis))).toList(),
                 onChanged: (v) => setState(() => selectedOperation = v ?? selectedOperation),
                 decoration: const InputDecoration(labelText: '具体工具', border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: _parametersCtrl,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: '工具参数 JSON',
+                  hintText: '{"class_name":"com.example.MainActivity","abi":"arm64-v8a"}',
+                  border: OutlineInputBorder(),
+                ),
               ),
               const SizedBox(height: 14),
               TextField(focusNode: _targetFocus, controller: _targetCtrl, decoration: const InputDecoration(labelText: '目标路径或目标标识', hintText: '/targets/sample.apk', border: OutlineInputBorder())),
