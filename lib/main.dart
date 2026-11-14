@@ -41,6 +41,17 @@ const defaultCapabilityFamilies = <String>[
   'Evidence ledger',
 ];
 
+const defaultOperationsByFamily = <String, List<String>>{
+  'Android APK': ['inspect_android_package', 'search_android_classes', 'inspect_android_class', 'inspect_android_jni_bindings'],
+  'Flutter AOT': ['identify_flutter_build', 'inspect_dart_aot'],
+  'Native binary': ['inspect_binary_layout', 'inspect_native_exports', 'inspect_binary_hardening'],
+  'JavaScript / Electron': ['analyze_javascript_application', 'inspect_electron_fuses', 'trace_application_feature'],
+  '.NET managed code': ['inspect_managed_artifact', 'inspect_managed_members', 'project_managed_application_graph'],
+  'Firmware': ['inspect_firmware_regions', 'extract_firmware'],
+  'Network capture': ['inspect_pcap_client', 'inspect_pcap_capture', 'inspect_web_network_capture'],
+  'Evidence ledger': ['inspect_evidence_bundle', 'inspect_analysis_view'],
+};
+
 class ReaBackend {
   ReaBackend(this.baseUrl);
   final String baseUrl;
@@ -94,6 +105,7 @@ class _ReaHomePageState extends State<ReaHomePage> {
   List<String> families = [...defaultCapabilityFamilies];
   List<EvidenceRecord> records = [];
   String selectedFamily = 'Android APK';
+  String selectedOperation = 'inspect_android_package';
   String? error;
   bool loading = false;
   int tab = 0;
@@ -107,6 +119,8 @@ class _ReaHomePageState extends State<ReaHomePage> {
     try {
       final discovered = await _api.capabilities();
       families = discovered.isEmpty ? [...defaultCapabilityFamilies] : discovered;
+      final ops = defaultOperationsByFamily[families.contains(selectedFamily) ? selectedFamily : families.first] ?? const <String>[];
+      if (ops.isNotEmpty && !ops.contains(selectedOperation)) selectedOperation = ops.first;
       records = await _api.evidence();
     } catch (e) {
       error = '$e';
@@ -114,7 +128,7 @@ class _ReaHomePageState extends State<ReaHomePage> {
     if (mounted) setState(() => loading = false);
   }
   Future<void> _saveBackend() async { final p = await SharedPreferences.getInstance(); await p.setString('rea_backend', _backendCtrl.text.trim()); await _refresh(); }
-  Future<void> _run() async { if (_targetCtrl.text.trim().isEmpty) { setState(() => error = '先输入目标路径或后端可见的目标标识。'); return; } setState(() { loading = true; error = null; }); try { await _api.submit(selectedFamily, _targetCtrl.text.trim()); await _refresh(); } catch (e) { setState(() => error = '$e'); } }
+  Future<void> _run() async { if (_targetCtrl.text.trim().isEmpty) { setState(() => error = '先输入目标路径或后端可见的目标标识。'); return; } setState(() { loading = true; error = null; }); try { await _api.submit(selectedOperation, _targetCtrl.text.trim()); await _refresh(); } catch (e) { setState(() => error = '$e'); } }
 
   @override
   Widget build(BuildContext context) => FocusTraversalGroup(child: Shortcuts(shortcuts: const {SingleActivator(LogicalKeyboardKey.select): ActivateIntent()}, child: Actions(actions: {ActivateIntent: CallbackAction<ActivateIntent>(onInvoke: (_) { _refresh(); return null; })}, child: Scaffold(body: SafeArea(child: Row(children: [_nav(), Expanded(child: _page())]))))));
@@ -154,9 +168,21 @@ class _ReaHomePageState extends State<ReaHomePage> {
               DropdownButtonFormField<String>(
                 isExpanded: true,
                 initialValue: selectedFamily,
-                items: [selectedFamily, ...families.where((x) => x != selectedFamily)].map((x) => DropdownMenuItem(value: x, child: Text(x, overflow: TextOverflow.ellipsis))).toList(),
-                onChanged: (v) => setState(() => selectedFamily = v ?? selectedFamily),
+                items: families.map((x) => DropdownMenuItem(value: x, child: Text(x, overflow: TextOverflow.ellipsis))).toList(),
+                onChanged: (v) {
+                  final family = v ?? selectedFamily;
+                  final ops = defaultOperationsByFamily[family] ?? const <String>[];
+                  setState(() { selectedFamily = family; if (ops.isNotEmpty) selectedOperation = ops.first; });
+                },
                 decoration: const InputDecoration(labelText: '能力族', border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 14),
+              DropdownButtonFormField<String>(
+                isExpanded: true,
+                initialValue: selectedOperation,
+                items: (defaultOperationsByFamily[selectedFamily] ?? const <String>[]).map((x) => DropdownMenuItem(value: x, child: Text(x, overflow: TextOverflow.ellipsis))).toList(),
+                onChanged: (v) => setState(() => selectedOperation = v ?? selectedOperation),
+                decoration: const InputDecoration(labelText: '具体工具', border: OutlineInputBorder()),
               ),
               const SizedBox(height: 14),
               TextField(focusNode: _targetFocus, controller: _targetCtrl, decoration: const InputDecoration(labelText: '目标路径或目标标识', hintText: '/targets/sample.apk', border: OutlineInputBorder())),

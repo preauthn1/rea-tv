@@ -13,7 +13,8 @@ Current client slice:
 - Backend URL persistence
 - Capability-family discovery
 - Bounded analysis submission
-- Evidence ledger with target, operation, confidence, authority, summary and limitations
+- Backend capability-family discovery with concrete REA operation mapping
+- Evidence detail dialog with target, operation, confidence, authority, limitations, location and normalized result
 - Explicit empty, loading and error states
 
 Backend contract: [`BACKEND_CONTRACT.md`](BACKEND_CONTRACT.md)

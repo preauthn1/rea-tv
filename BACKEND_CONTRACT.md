@@ -21,7 +21,7 @@ Request:
 
 ```json
 {
-  "operation": "Android APK",
+  "operation": "inspect_android_package",
   "target": "/targets/sample.apk"
 }
 ```
