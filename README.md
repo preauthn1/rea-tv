@@ -42,4 +42,17 @@ The client maps to the upstream REA contracts and services rather than copying a
 - Evidence schema: `src/domain/evidence.ts`
 - MCP server composition: `src/server/createServer.ts`
 
-Upstream project: https://github.com/morluto/rea
+## mihomo application-only node management
+
+The repository includes an application-only integration boundary for mihomo v1.19.34. The Flutter TV client does not create an Android `VpnService`, does not install a system proxy, and does not change device routing. It calls the controlled backend; the backend calls mihomo's loopback External Controller.
+
+Configure the backend with:
+
+```bash
+MIHOMO_CONTROLLER_URL=http://127.0.0.1:9090
+MIHOMO_SECRET='[secret]'
+```
+
+The backend exposes authenticated proxy-management endpoints under `/api/mihomo/*`. The Flutter UI can view version/config status, list proxy groups and nodes, and switch Selector groups. The included `mihomo/application-only.yaml` disables all inbound proxy ports and TUN; adapt it only if the application later needs a narrowly scoped internal outbound transport.
+
+This is intentionally not a VPN or global-proxy integration. It is a controlled, app-owned mihomo node engine boundary.

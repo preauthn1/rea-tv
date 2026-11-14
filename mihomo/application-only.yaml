@@ -1,0 +1,35 @@
+# mihomo v1.19.34 application-only controller profile.
+# This profile deliberately has no HTTP/SOCKS/Mixed/redirect/tproxy listener and no TUN.
+# The core is a node/rule engine controlled only through a loopback Controller.
+
+mode: rule
+log-level: info
+allow-lan: false
+ipv6: false
+
+# Do not create traffic inbounds or system-level capture.
+port: 0
+socks-port: 0
+mixed-port: 0
+redir-port: 0
+tproxy-port: 0
+listeners: []
+tun:
+  enable: false
+
+# Controller must remain private; REA backend proxies approved actions to it.
+external-controller: 127.0.0.1:9090
+secret: ${MIHOMO_SECRET}
+
+profile:
+  store-selected: true
+  store-fake-ip: false
+
+proxies: []
+proxy-groups:
+  - name: REA-OUTBOUND
+    type: select
+    proxies:
+      - DIRECT
+rules:
+  - MATCH,REA-OUTBOUND

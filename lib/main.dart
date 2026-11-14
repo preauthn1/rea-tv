@@ -8,6 +8,24 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 void main() => runApp(const ReaTvApp());
 
+class MihomoProxy {
+  const MihomoProxy({required this.name, required this.type, this.alive, this.delay, this.all = const [], this.now});
+  final String name, type;
+  final bool? alive;
+  final int? delay;
+  final List<String> all;
+  final String? now;
+  bool get selectable => type == 'Selector' && all.isNotEmpty;
+  factory MihomoProxy.fromJson(Map<String, dynamic> j) => MihomoProxy(
+        name: '${j['name'] ?? ''}',
+        type: '${j['type'] ?? ''}',
+        alive: j['alive'] as bool?,
+        delay: (j['delay'] as num?)?.toInt(),
+        all: [for (final x in (j['all'] as List? ?? const [])) '$x'],
+        now: j['now'] as String?,
+      );
+}
+
 class AnalysisJob {
   const AnalysisJob({required this.id, required this.operation, required this.target, required this.status, this.message});
   final String id, operation, target, status;
@@ -46,6 +64,7 @@ class EvidenceRecord {
 }
 
 const defaultCapabilityFamilies = <String>[
+  'mihomo node management',
   'Android APK',
   'Flutter AOT',
   'Native binary',
@@ -131,6 +150,11 @@ class ReaBackend {
     }
     return result;
   }
+  Future<Map<String, dynamic>> mihomoStatus() async { final r = await http.get(_uri('/api/mihomo/status'), headers: _headers); _check(r); return jsonDecode(r.body) as Map<String, dynamic>; }
+  Future<List<MihomoProxy>> mihomoProxies() async { final r = await http.get(_uri('/api/mihomo/proxies'), headers: _headers); _check(r); final data = jsonDecode(r.body) as Map; final proxies = (data['proxies'] as Map? ?? const {}); return [for (final x in proxies.values) if (x is Map) MihomoProxy.fromJson(Map<String, dynamic>.from(x))]; }
+  Future<void> mihomoSelect(String group, String proxy) async { final r = await http.put(_uri('/api/mihomo/proxies/${Uri.encodeComponent(group)}'), headers: {..._headers, 'content-type': 'application/json'}, body: jsonEncode({'name': proxy})); _check(r); }
+  Future<void> mihomoPatchConfig(Map<String, dynamic> config) async { final r = await http.patch(_uri('/api/mihomo/configs'), headers: {..._headers, 'content-type': 'application/json'}, body: jsonEncode(config)); _check(r); }
+  Future<void> mihomoCloseConnections() async { final r = await http.delete(_uri('/api/mihomo/connections'), headers: _headers); _check(r); }
   Future<List<EvidenceRecord>> evidence() async {
     final r = await http.get(_uri('/api/evidence', {'limit': '50'}), headers: _headers);
     _check(r);
@@ -182,6 +206,8 @@ class _ReaHomePageState extends State<ReaHomePage> {
   final _targetFocus = FocusNode();
   List<String> families = [...defaultCapabilityFamilies];
   Map<String, List<String>> discoveredOperations = {};
+  List<MihomoProxy> mihomoProxies = [];
+  Map<String, dynamic>? mihomoStatus;
   List<EvidenceRecord> records = [];
   AnalysisJob? activeJob;
   Timer? _jobPoller;
@@ -195,6 +221,12 @@ class _ReaHomePageState extends State<ReaHomePage> {
   @override void dispose() { _jobPoller?.cancel(); _backendCtrl.dispose(); _tokenCtrl.dispose(); _targetCtrl.dispose(); _parametersCtrl.dispose(); _scopeFocus.dispose(); _targetFocus.dispose(); super.dispose(); }
   Future<void> _loadBackend() async { final p = await SharedPreferences.getInstance(); final v = p.getString('rea_backend'); final token = await _secureStorage.read(key: 'rea_backend_token'); if (v != null) _backendCtrl.text = v; if (token != null) _tokenCtrl.text = token; }
   ReaBackend get _api => ReaBackend(_backendCtrl.text.trim(), token: _tokenCtrl.text);
+  Future<void> _refreshMihomo() async { try { final status = await _api.mihomoStatus(); final proxies = await _api.mihomoProxies(); if (mounted) setState(() { mihomoStatus = status; mihomoProxies = proxies; }); } catch (e) { if (mounted) setState(() => error = '$e'); } }
+  Future<void> _chooseMihomoNode(MihomoProxy group) async {
+    final selected = await showDialog<String>(context: context, builder: (context) => AlertDialog(title: Text('切换 ${group.name}'), content: SizedBox(width: 680, child: ListView(children: [for (final node in group.all) ListTile(autofocus: node == group.now, title: Text(node), trailing: node == group.now ? const Icon(Icons.check, color: Color(0xff8dffe0)) : null, onTap: () => Navigator.pop(context, node))])), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消'))]));
+    if (selected == null || selected == group.now) return;
+    try { await _api.mihomoSelect(group.name, selected); await _refreshMihomo(); } catch (e) { if (mounted) setState(() => error = '$e'); }
+  }
   Future<void> _refresh() async {
     setState(() { loading = true; error = null; });
     try {
@@ -263,12 +295,13 @@ class _ReaHomePageState extends State<ReaHomePage> {
             _NavButton(icon: Icons.radar, label: '调查工作台', selected: tab == 0, onTap: () => setState(() => tab = 0)),
             _NavButton(icon: Icons.fact_check, label: '证据 ledger', selected: tab == 1, onTap: () => setState(() => tab = 1)),
             _NavButton(icon: Icons.settings_outlined, label: '后端连接', selected: tab == 2, onTap: () => setState(() => tab = 2)),
+            _NavButton(icon: Icons.router, label: 'mihomo 节点', selected: tab == 3, onTap: () { setState(() => tab = 3); _refreshMihomo(); }),
             const Spacer(),
             const Text('Evidence-first / read-only TV client', style: TextStyle(color: Color(0xff627080), fontSize: 12)),
           ],
         ),
       );
-  Widget _page() { if (tab == 1) return _evidencePage(); if (tab == 2) return _settingsPage(); return _workspacePage(); }
+  Widget _page() { if (tab == 1) return _evidencePage(); if (tab == 2) return _settingsPage(); if (tab == 3) return _mihomoPage(); return _workspacePage(); }
   Widget _workspacePage() => Padding(padding: const EdgeInsets.fromLTRB(36, 30, 36, 24), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('调查工作台', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800)), const SizedBox(height: 8), const Text('选择能力、提交目标、在同一屏查看结果和限制。', style: TextStyle(color: Color(0xff9ba8b7))), const SizedBox(height: 28), Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: _operationPanel()), const SizedBox(width: 22), Expanded(child: _statusPanel())]), const SizedBox(height: 24), Expanded(child: _recentEvidence())]));
   Widget _operationPanel() => Card(
         child: Padding(
@@ -343,6 +376,17 @@ class _ReaHomePageState extends State<ReaHomePage> {
         ],
       );
   Widget _evidencePage() => Padding(padding: const EdgeInsets.all(36), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('证据 ledger', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800)), const SizedBox(height: 8), const Text('每条结论都保留来源、置信度、权威级别和限制。', style: TextStyle(color: Color(0xff9ba8b7))), const SizedBox(height: 24), Expanded(child: _recentEvidence())]));
+  Widget _mihomoPage() => Padding(
+        padding: const EdgeInsets.all(36),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [Expanded(child: Text('mihomo 节点管理', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800))), IconButton(onPressed: _refreshMihomo, icon: const Icon(Icons.refresh))]),
+          Text(mihomoStatus == null ? '未连接 Controller' : 'Controller 已连接', style: TextStyle(color: mihomoStatus == null ? Colors.orangeAccent : const Color(0xff8dffe0))),
+          const SizedBox(height: 20),
+          if (mihomoStatus != null) Text('版本：${(mihomoStatus!['version'] as Map?)?['version'] ?? 'unknown'} · 模式：${(mihomoStatus!['configs'] as Map?)?['mode'] ?? 'unknown'}'),
+          const SizedBox(height: 18),
+          Expanded(child: mihomoProxies.isEmpty ? const Center(child: Text('没有节点数据，检查 mihomo Controller 地址和 Token。')) : ListView.separated(itemCount: mihomoProxies.length, separatorBuilder: (_, __) => const SizedBox(height: 8), itemBuilder: (_, i) { final p = mihomoProxies[i]; return Card(child: ListTile(leading: Icon(p.alive == false ? Icons.cloud_off : Icons.cloud_done, color: p.alive == false ? Colors.orangeAccent : const Color(0xff8dffe0)), title: Text(p.name), subtitle: Text('${p.type}${p.now == null ? '' : ' · 当前：${p.now}'}${p.delay == null ? '' : ' · ${p.delay} ms'}'), trailing: p.selectable ? FilledButton(onPressed: () => _chooseMihomoNode(p), child: const Text('切换')) : null)); })),
+        ]),
+      );
   Widget _settingsPage() => Padding(
         padding: const EdgeInsets.all(36),
         child: Column(

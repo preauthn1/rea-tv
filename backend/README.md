@@ -15,8 +15,14 @@ The adapter exposes:
 - `GET /api/capabilities`
 - `POST /api/analyses`
 - `GET /api/analyses/:id`
-- `GET /api/evidence?limit=50`
+- `GET /api/mihomo/status`
+- `GET /api/mihomo/proxies`
+- `PUT /api/mihomo/proxies/:group` with `{ "name": "node" }`
+- `GET /api/mihomo/connections`
+- `DELETE /api/mihomo/connections`
+- `GET /api/mihomo/rules`
+- `PATCH /api/mihomo/configs`
 
-The adapter invokes REA's existing CLI dispatcher with `--json`, records the returned result as Evidence, and keeps a bounded in-memory evidence list.
+These routes require the same backend Bearer token. The mihomo Controller itself is configured separately through `MIHOMO_CONTROLLER_URL` and `MIHOMO_SECRET`; it is never exposed by the Flutter client.
 
 This is a development adapter, not a public deployment boundary. It binds to loopback by default. Set `REA_BACKEND_TOKEN` to require `Authorization: Bearer <token>` on every endpoint. `REA_BACKEND_HOST` must be changed deliberately if a reverse proxy or another host needs to reach it. Before production use, add persistent evidence storage, cancellation, target-root admission, rate limits, and a complete parameter-to-CLI mapping.

@@ -10,6 +10,8 @@ import { resolve } from 'node:path';
 const port = Number(process.env.REA_BACKEND_PORT ?? 8787);
 const host = process.env.REA_BACKEND_HOST ?? '127.0.0.1';
 const bearerToken = process.env.REA_BACKEND_TOKEN;
+const mihomoController = process.env.MIHOMO_CONTROLLER_URL?.replace(/\/$/, '') ?? null;
+const mihomoSecret = process.env.MIHOMO_SECRET ?? '';
 const reaRoot = resolve(process.env.REA_ROOT ?? '../rea');
 const dispatcher = resolve(reaRoot, 'scripts/rea.mjs');
 const jobs = new Map();
@@ -34,6 +36,14 @@ function safeTarget(target) {
   if (typeof target !== 'string' || target.length === 0 || target.length > 4096) throw new Error('invalid target');
   if (target.includes('\0') || target.startsWith('-')) throw new Error('target must be a path or admitted identifier');
   return target;
+}
+async function mihomo(path, options = {}) {
+  if (!mihomoController) throw new Error('mihomo controller is not configured');
+  const headers = { ...(options.body ? {'content-type': 'application/json'} : {}), ...(mihomoSecret ? {authorization: `Bearer ${mihomoSecret}`} : {}) };
+  const response = await fetch(`${mihomoController}${path}`, { method: options.method ?? 'GET', headers, body: options.body ? JSON.stringify(options.body) : undefined });
+  const text = await response.text();
+  if (!response.ok) throw new Error(`mihomo ${response.status}: ${text.slice(0, 1000)}`);
+  return text ? JSON.parse(text) : null;
 }
 function json(res, status, value) {
   const body = JSON.stringify(value);
@@ -89,6 +99,14 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
     if (req.method === 'GET' && url.pathname === '/api/capabilities') return json(res, 200, { families: catalog });
+    if (req.method === 'GET' && url.pathname === '/api/mihomo/status') return json(res, 200, { configured: Boolean(mihomoController), controller: mihomoController ? 'configured' : null, version: await mihomo('/version'), configs: await mihomo('/configs') });
+    if (req.method === 'GET' && url.pathname === '/api/mihomo/proxies') return json(res, 200, await mihomo('/proxies'));
+    if (req.method === 'GET' && url.pathname === '/api/mihomo/connections') return json(res, 200, await mihomo('/connections'));
+    if (req.method === 'GET' && url.pathname === '/api/mihomo/rules') return json(res, 200, await mihomo('/rules'));
+    const proxyMatch = url.pathname.match(/^\/api\/mihomo\/proxies\/([^/]+)$/);
+    if (req.method === 'PUT' && proxyMatch) { const body = await readJson(req); return json(res, 200, await mihomo(`/proxies/${encodeURIComponent(proxyMatch[1])}`, { method: 'PUT', body })); }
+    if (req.method === 'DELETE' && url.pathname === '/api/mihomo/connections') return json(res, 204, await mihomo('/connections', { method: 'DELETE' }));
+    if (req.method === 'PATCH' && url.pathname === '/api/mihomo/configs') { const body = await readJson(req); return json(res, 204, await mihomo('/configs', { method: 'PATCH', body })); }
     if (req.method === 'GET' && url.pathname === '/api/evidence') return json(res, 200, evidence.slice(0, Math.min(Number(url.searchParams.get('limit') ?? 50), 50)));
     const jobMatch = url.pathname.match(/^\/api\/analyses\/([^/]+)$/);
     if (req.method === 'GET' && jobMatch) { const job = jobs.get(jobMatch[1]); return job ? json(res, 200, job) : json(res, 404, { error: 'analysis not found' }); }
