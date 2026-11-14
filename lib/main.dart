@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 void main() => runApp(const ReaTvApp());
 
@@ -111,11 +112,13 @@ const operationParameterHelp = <String, String>{
 };
 
 class ReaBackend {
-  ReaBackend(this.baseUrl);
+  ReaBackend(this.baseUrl, {this.token = ''});
   final String baseUrl;
+  final String token;
+  Map<String, String> get _headers => token.trim().isEmpty ? const {} : {'authorization': 'Bearer ${token.trim()}'};
   Uri _uri(String path, [Map<String, String>? query]) => Uri.parse('$baseUrl/${path.replaceFirst(RegExp(r'^/+'), '')}').replace(queryParameters: query);
   Future<Map<String, List<String>>> capabilities() async {
-    final r = await http.get(_uri('/api/capabilities'));
+    final r = await http.get(_uri('/api/capabilities'), headers: _headers);
     _check(r);
     final data = jsonDecode(r.body);
     final result = <String, List<String>>{};
@@ -129,18 +132,18 @@ class ReaBackend {
     return result;
   }
   Future<List<EvidenceRecord>> evidence() async {
-    final r = await http.get(_uri('/api/evidence', {'limit': '50'}));
+    final r = await http.get(_uri('/api/evidence', {'limit': '50'}), headers: _headers);
     _check(r);
     final data = jsonDecode(r.body) as List;
     return data.map((x) => EvidenceRecord.fromJson(x as Map<String, dynamic>)).toList();
   }
   Future<AnalysisJob> submit(String operation, String target, Map<String, dynamic> parameters) async {
-    final r = await http.post(_uri('/api/analyses'), headers: {'content-type': 'application/json'}, body: jsonEncode({'operation': operation, 'target': target, 'parameters': parameters}));
+    final r = await http.post(_uri('/api/analyses'), headers: {..._headers, 'content-type': 'application/json'}, body: jsonEncode({'operation': operation, 'target': target, 'parameters': parameters}));
     _check(r);
     return AnalysisJob.fromJson(jsonDecode(r.body) as Map<String, dynamic>);
   }
   Future<AnalysisJob> job(String id) async {
-    final r = await http.get(_uri('/api/analyses/$id'));
+    final r = await http.get(_uri('/api/analyses/$id'), headers: _headers);
     _check(r);
     return AnalysisJob.fromJson(jsonDecode(r.body) as Map<String, dynamic>);
   }
@@ -170,7 +173,9 @@ class ReaHomePage extends StatefulWidget {
 }
 
 class _ReaHomePageState extends State<ReaHomePage> {
+  static const _secureStorage = FlutterSecureStorage();
   final _backendCtrl = TextEditingController(text: 'http://192.0.2.2:8787');
+  final _tokenCtrl = TextEditingController();
   final _targetCtrl = TextEditingController();
   final _parametersCtrl = TextEditingController(text: '{}');
   final _scopeFocus = FocusNode();
@@ -187,9 +192,9 @@ class _ReaHomePageState extends State<ReaHomePage> {
   int tab = 0;
 
   @override void initState() { super.initState(); _loadBackend(); }
-  @override void dispose() { _jobPoller?.cancel(); _backendCtrl.dispose(); _targetCtrl.dispose(); _parametersCtrl.dispose(); _scopeFocus.dispose(); _targetFocus.dispose(); super.dispose(); }
-  Future<void> _loadBackend() async { final p = await SharedPreferences.getInstance(); final v = p.getString('rea_backend'); if (v != null) _backendCtrl.text = v; }
-  ReaBackend get _api => ReaBackend(_backendCtrl.text.trim());
+  @override void dispose() { _jobPoller?.cancel(); _backendCtrl.dispose(); _tokenCtrl.dispose(); _targetCtrl.dispose(); _parametersCtrl.dispose(); _scopeFocus.dispose(); _targetFocus.dispose(); super.dispose(); }
+  Future<void> _loadBackend() async { final p = await SharedPreferences.getInstance(); final v = p.getString('rea_backend'); final token = await _secureStorage.read(key: 'rea_backend_token'); if (v != null) _backendCtrl.text = v; if (token != null) _tokenCtrl.text = token; }
+  ReaBackend get _api => ReaBackend(_backendCtrl.text.trim(), token: _tokenCtrl.text);
   Future<void> _refresh() async {
     setState(() { loading = true; error = null; });
     try {
@@ -235,7 +240,7 @@ class _ReaHomePageState extends State<ReaHomePage> {
     if (decoded is! Map<String, dynamic>) throw const FormatException('参数必须是 JSON 对象');
     return decoded;
   }
-  Future<void> _saveBackend() async { final p = await SharedPreferences.getInstance(); await p.setString('rea_backend', _backendCtrl.text.trim()); await _refresh(); }
+  Future<void> _saveBackend() async { final p = await SharedPreferences.getInstance(); await p.setString('rea_backend', _backendCtrl.text.trim()); await _secureStorage.write(key: 'rea_backend_token', value: _tokenCtrl.text); await _refresh(); }
   Future<void> _run() async { if (_targetCtrl.text.trim().isEmpty) { setState(() => error = '先输入目标路径或后端可见的目标标识。'); return; } setState(() { loading = true; error = null; }); try { final job = await _api.submit(selectedOperation, _targetCtrl.text.trim(), _parameters()); _watchJob(job); await _refresh(); } catch (e) { setState(() => error = '$e'); } finally { if (mounted) setState(() => loading = false); } }
 
   @override
@@ -351,6 +356,15 @@ class _ReaHomePageState extends State<ReaHomePage> {
                 controller: _backendCtrl,
                 focusNode: _scopeFocus,
                 decoration: const InputDecoration(labelText: 'REA backend URL', hintText: 'http://host:8787', border: OutlineInputBorder()),
+              ),
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: 680,
+              child: TextField(
+                controller: _tokenCtrl,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: 'Bearer Token（可选）', hintText: '仅发送到配置的 backend', border: OutlineInputBorder()),
               ),
             ),
             const SizedBox(height: 14),

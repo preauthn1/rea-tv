@@ -64,7 +64,7 @@ Response is a JSON array of REA Evidence records. The client consumes:
 - `limitations[]`
 - `locations[]`
 
-The backend must not expose credentials or arbitrary process output in this first client slice.
+Tokens are stored in the platform secure storage on the client, not ordinary preferences. The backend must not expose credentials or arbitrary process output in this first client slice.
 
 ## Backend implementation mapping
 
