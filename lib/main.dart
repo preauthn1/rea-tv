@@ -7,10 +7,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() => runApp(const ReaTvApp());
 
 class EvidenceRecord {
-  const EvidenceRecord({required this.id, required this.operation, required this.target, required this.summary, required this.confidence, required this.authority, required this.limitations, this.location});
+  const EvidenceRecord({required this.id, required this.operation, required this.target, required this.summary, required this.confidence, required this.authority, required this.limitations, this.location, this.rawResult});
   final String id, operation, target, summary, confidence, authority;
   final List<String> limitations;
   final String? location;
+  final dynamic rawResult;
   factory EvidenceRecord.fromJson(Map<String, dynamic> j) => EvidenceRecord(
         id: j['evidence_id'] as String? ?? 'ev-unknown',
         operation: j['operation'] as String? ?? 'unknown operation',
@@ -20,6 +21,7 @@ class EvidenceRecord {
         authority: j['authority'] as String? ?? 'analyst-inference',
         limitations: [for (final x in (j['limitations'] as List? ?? const [])) '$x'],
         location: ((j['locations'] as List?)?.isNotEmpty ?? false) ? '${(j['locations'] as List).first}' : null,
+        rawResult: j['normalized_result'],
       );
   static String _readSummary(dynamic result) {
     if (result is Map && result['summary'] != null) return '${result['summary']}';
@@ -168,7 +170,29 @@ class _ReaHomePageState extends State<ReaHomePage> {
         ),
       );
   Widget _statusPanel() => Card(child: Padding(padding: const EdgeInsets.all(22), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('状态', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)), const SizedBox(height: 18), _Metric(label: '后端', value: _backendCtrl.text.isEmpty ? '未配置' : '已配置', color: const Color(0xff8dffe0)), _Metric(label: '能力族', value: '${families.length} 个'), _Metric(label: '证据记录', value: '${records.length} 条'), if (loading) const Padding(padding: EdgeInsets.only(top: 12), child: LinearProgressIndicator()), if (error != null) Padding(padding: const EdgeInsets.only(top: 14), child: Text(error!, style: const TextStyle(color: Colors.orangeAccent))) ])));
-  Widget _recentEvidence() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('最近证据', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)), const SizedBox(height: 12), Expanded(child: records.isEmpty ? const Center(child: Text('还没有证据。提交一次分析后，结果会保留在这里。', style: TextStyle(color: Color(0xff8d99a8)))) : ListView.separated(itemCount: records.length, separatorBuilder: (_, __) => const SizedBox(height: 10), itemBuilder: (_, i) => _EvidenceTile(record: records[i]))) ]);
+  Future<void> _openEvidence(EvidenceRecord record) async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => EvidenceDetailDialog(record: record),
+    );
+  }
+
+  Widget _recentEvidence() => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('最近证据', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 12),
+          Expanded(
+            child: records.isEmpty
+                ? const Center(child: Text('还没有证据。提交一次分析后，结果会保留在这里。', style: TextStyle(color: Color(0xff8d99a8))))
+                : ListView.separated(
+                    itemCount: records.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    itemBuilder: (_, i) => _EvidenceTile(record: records[i], onTap: () => _openEvidence(records[i])),
+                  ),
+          ),
+        ],
+      );
   Widget _evidencePage() => Padding(padding: const EdgeInsets.all(36), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('证据 ledger', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800)), const SizedBox(height: 8), const Text('每条结论都保留来源、置信度、权威级别和限制。', style: TextStyle(color: Color(0xff9ba8b7))), const SizedBox(height: 24), Expanded(child: _recentEvidence())]));
   Widget _settingsPage() => Padding(
         padding: const EdgeInsets.all(36),
@@ -217,11 +241,13 @@ class _NavButton extends StatelessWidget {
 }
 class _Metric extends StatelessWidget { const _Metric({required this.label, required this.value, this.color}); final String label, value; final Color? color; @override Widget build(BuildContext context) => Padding(padding: const EdgeInsets.only(bottom: 14), child: Row(children: [Expanded(child: Text(label, style: const TextStyle(color: Color(0xff8d99a8)))), Text(value, style: TextStyle(fontWeight: FontWeight.w700, color: color))])); }
 class _EvidenceTile extends StatelessWidget {
-  const _EvidenceTile({required this.record});
+  const _EvidenceTile({required this.record, this.onTap});
   final EvidenceRecord record;
+  final VoidCallback? onTap;
   @override
   Widget build(BuildContext context) => Card(
         child: ListTile(
+          onTap: onTap,
           leading: const CircleAvatar(
             backgroundColor: Color(0xff173d36),
             child: Icon(Icons.verified_outlined, color: Color(0xff8dffe0)),
@@ -232,3 +258,34 @@ class _EvidenceTile extends StatelessWidget {
         ),
       );
 }
+
+class EvidenceDetailDialog extends StatelessWidget {
+  const EvidenceDetailDialog({required this.record, super.key});
+  final EvidenceRecord record;
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: Text(record.operation),
+        content: SizedBox(
+          width: 900,
+          child: SingleChildScrollView(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('目标：${record.target}'),
+              const SizedBox(height: 8),
+              Text('Evidence ID：${record.id}', style: const TextStyle(color: Color(0xff9ba8b7))),
+              Text('Confidence：${record.confidence}', style: const TextStyle(color: Color(0xffffd479))),
+              Text('Authority：${record.authority}', style: const TextStyle(color: Color(0xff8dffe0))),
+              if (record.location != null) Text('Location：${record.location}'),
+              const SizedBox(height: 18),
+              const Text('Limitations', style: TextStyle(fontWeight: FontWeight.w700)),
+              ...record.limitations.map((x) => Padding(padding: const EdgeInsets.only(top: 4), child: Text('• $x'))),
+              const SizedBox(height: 18),
+              const Text('Normalized result', style: TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 6),
+              SelectableText(const JsonEncoder.withIndent('  ').convert(record.rawResult ?? {})),
+            ]),
+          ),
+        ),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('关闭'))],
+      );
+}
+
