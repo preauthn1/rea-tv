@@ -8,6 +8,8 @@ import { constants } from 'node:fs';
 import { resolve } from 'node:path';
 
 const port = Number(process.env.REA_BACKEND_PORT ?? 8787);
+const host = process.env.REA_BACKEND_HOST ?? '127.0.0.1';
+const bearerToken = process.env.REA_BACKEND_TOKEN;
 const reaRoot = resolve(process.env.REA_ROOT ?? '../rea');
 const dispatcher = resolve(reaRoot, 'scripts/rea.mjs');
 const jobs = new Map();
@@ -24,6 +26,15 @@ const catalog = [
   { id: 'evidence', name: 'Evidence ledger', operations: ['inspect_evidence_bundle', 'inspect_analysis_view'] },
 ];
 
+function authorized(req) {
+  if (!bearerToken) return true;
+  return req.headers.authorization === `Bearer ${bearerToken}`;
+}
+function safeTarget(target) {
+  if (typeof target !== 'string' || target.length === 0 || target.length > 4096) throw new Error('invalid target');
+  if (target.includes('\0') || target.startsWith('-')) throw new Error('target must be a path or admitted identifier');
+  return target;
+}
 function json(res, status, value) {
   const body = JSON.stringify(value);
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
@@ -74,6 +85,7 @@ function startJob(operation, target, parameters) {
   return job;
 }
 const server = http.createServer(async (req, res) => {
+  if (!authorized(req)) return json(res, 401, { error: 'authentication required' });
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
     if (req.method === 'GET' && url.pathname === '/api/capabilities') return json(res, 200, { families: catalog });
@@ -81,11 +93,12 @@ const server = http.createServer(async (req, res) => {
     const jobMatch = url.pathname.match(/^\/api\/analyses\/([^/]+)$/);
     if (req.method === 'GET' && jobMatch) { const job = jobs.get(jobMatch[1]); return job ? json(res, 200, job) : json(res, 404, { error: 'analysis not found' }); }
     if (req.method === 'POST' && url.pathname === '/api/analyses') {
-      const body = await readJson(req); if (typeof body.operation !== 'string' || typeof body.target !== 'string') return json(res, 400, { error: 'operation and target are required' });
+      const body = await readJson(req); if (typeof body.operation !== 'string') return json(res, 400, { error: 'operation and target are required' });
+      const target = safeTarget(body.target);
       if (!catalog.some(f => f.operations.includes(body.operation))) return json(res, 400, { error: 'operation is not in catalog' });
-      return json(res, 202, startJob(body.operation, body.target, body.parameters && typeof body.parameters === 'object' ? body.parameters : {}));
+      return json(res, 202, startJob(body.operation, target, body.parameters && typeof body.parameters === 'object' ? body.parameters : {}));
     }
     return json(res, 404, { error: 'not found' });
   } catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : String(error) }); }
 });
-server.listen(port, '0.0.0.0', () => console.log(`REA TV backend listening on :${port}; REA_ROOT=${reaRoot}`));
+server.listen(port, host, () => console.log(`REA TV backend listening on ${host}:${port}; REA_ROOT=${reaRoot}; auth=${bearerToken ? 'bearer' : 'disabled'}`));

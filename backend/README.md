@@ -19,4 +19,4 @@ The adapter exposes:
 
 The adapter invokes REA's existing CLI dispatcher with `--json`, records the returned result as Evidence, and keeps a bounded in-memory evidence list.
 
-This is a development adapter, not a production deployment boundary. It needs authentication, target admission, persistent evidence storage, cancellation, and a more complete parameter-to-CLI mapping before exposure outside a controlled network.
+This is a development adapter, not a public deployment boundary. It binds to loopback by default. Set `REA_BACKEND_TOKEN` to require `Authorization: Bearer <token>` on every endpoint. `REA_BACKEND_HOST` must be changed deliberately if a reverse proxy or another host needs to reach it. Before production use, add persistent evidence storage, cancellation, target-root admission, rate limits, and a complete parameter-to-CLI mapping.
