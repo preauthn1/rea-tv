@@ -68,6 +68,8 @@ The backend must not expose credentials or arbitrary process output in this firs
 
 ## Backend implementation mapping
 
+A runnable development adapter is included at [`backend/rea-backend.mjs`](backend/rea-backend.mjs). It invokes the upstream REA CLI dispatcher with `--json`, maintains bounded in-memory jobs/evidence, and serves the contract endpoints. It is intentionally not an internet-facing deployment: operator authentication, target admission, persistent storage, cancellation, and complete parameter translation remain required before production use.
+
 The existing REA source already has canonical tool contracts and registrations. Flutter-facing adapters should call the same service boundary rather than duplicate decompilers:
 
 - `registerAndroidTools.ts`
