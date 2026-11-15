@@ -34,16 +34,20 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - run: flutter build apk --release --split-per-abi
+      - name: Build Android ARM64 APK
+        run: flutter build apk --debug --target-platform android-arm64
       - name: Write provenance
         run: |
-          mkdir -p build/provenance
-          printf 'commit=%s\nrun=%s\nworkflow=%s\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_WORKFLOW" > build/provenance/BUILD_INFO.txt
-          sha256sum build/app/outputs/flutter-apk/*.apk > build/provenance/SHA256SUMS
+          mkdir -p build/provenance build/delivery
+          cp build/app/outputs/flutter-apk/app-debug.apk build/delivery/rea-tv-arm64-v8a-${GITHUB_SHA::12}-debug.apk
+          printf 'commit=%s\nrun=%s\nworkflow=%s\nref=%s\nvariant=debug\nabi=arm64-v8a\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_WORKFLOW" "$GITHUB_REF" > build/provenance/BUILD_INFO.txt
+          sha256sum build/delivery/*.apk > build/provenance/SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
-          name: rea-tv-android-${{ github.sha }}
+          name: rea-tv-android-arm64-v8a-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
           path: |
-            build/app/outputs/flutter-apk/*.apk
+            build/delivery/*.apk
             build/provenance/BUILD_INFO.txt
             build/provenance/SHA256SUMS
