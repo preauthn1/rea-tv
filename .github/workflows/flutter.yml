@@ -33,20 +33,50 @@ jobs:
         with:
           channel: stable
           cache: true
-      - run: flutter pub get
-      - name: Build Android ARM64 APK
-        run: flutter build apk --debug --target-platform android-arm64
-      - name: Write provenance
+      - name: Restore fixed Android signing key
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
+          set -euo pipefail
+          test -n "$ANDROID_KEYSTORE_BASE64"
+          test -n "$ANDROID_KEYSTORE_PASSWORD"
+          test -n "$ANDROID_KEY_ALIAS"
+          test -n "$ANDROID_KEY_PASSWORD"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/release-keystore.jks
+          chmod 600 android/release-keystore.jks
+          test -s android/release-keystore.jks
+          {
+            printf 'storeFile=../release-keystore.jks\n'
+            printf 'storePassword=%s\n' "$ANDROID_KEYSTORE_PASSWORD"
+            printf 'keyAlias=%s\n' "$ANDROID_KEY_ALIAS"
+            printf 'keyPassword=%s\n' "$ANDROID_KEY_PASSWORD"
+          } > android/key.properties
+          chmod 600 android/key.properties
+      - run: flutter pub get
+      - name: Build signed Android ARM64 APK
+        run: flutter build apk --release --target-platform android-arm64
+      - name: Verify APK signature and write provenance
+        env:
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          test -s "$APK"
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
           mkdir -p build/provenance build/delivery
-          cp build/app/outputs/flutter-apk/app-debug.apk build/delivery/rea-tv-arm64-v8a-${GITHUB_SHA::12}-debug.apk
-          printf 'commit=%s\nrun=%s\nworkflow=%s\nref=%s\nvariant=debug\nabi=arm64-v8a\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_WORKFLOW" "$GITHUB_REF" > build/provenance/BUILD_INFO.txt
+          cp "$APK" "build/delivery/rea-tv-arm64-v8a-${GITHUB_SHA::12}-release.apk"
+          printf 'commit=%s\nrun=%s\nworkflow=%s\nref=%s\nvariant=release\nabi=arm64-v8a\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_WORKFLOW" "$GITHUB_REF" > build/provenance/BUILD_INFO.txt
           sha256sum build/delivery/*.apk > build/provenance/SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
-          name: rea-tv-android-arm64-v8a-${{ github.sha }}
+          name: rea-tv-android-arm64-v8a-release-${{ github.sha }}
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
           path: |
             build/delivery/*.apk
             build/provenance/BUILD_INFO.txt
